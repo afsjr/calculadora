@@ -139,22 +139,27 @@ function calcular(){
   const curso = CURSOS[cursoAtual];
 
   let totalGeral = valMatricula;
+  let parcelasGeral = 1;
   const resMods = [];
   const warnings = [];
 
   curso.modulos.forEach(mod=>{
     const r = calcularFatorModulo(mod);
-    let totalMod=0;
+    const numP = mod.disciplinas.length > 0 ? 9 : 0;
+    let vp=0, totalMod=0, nPCobradas=0;
     if(!r.dispensadoTotal){
-      totalMod = Math.round(mensalidade*r.fator*100)/100;
+      vp = Math.round(mensalidade*r.fator*100)/100;
+      totalMod = Math.round(vp*numP*100)/100;
+      nPCobradas = numP;
     }
     totalGeral += totalMod;
+    parcelasGeral += nPCobradas;
     if(r.chE>0 && !r.dispensadoTotal)
       warnings.push(`${mod.tag}: ${r.chE}h com status "Aguardando Ementas" — tratadas como complementar (1/3) até definição das ementas.`);
-    resMods.push({mod, r, totalMod, fator:r.fator});
+    resMods.push({mod, r, vp, totalMod, nPCobradas, numP, fator:r.fator});
   });
 
-  const parcelasGeral = Math.ceil(totalGeral / mensalidade);
+  const parcelasCalc = Math.ceil(totalGeral / mensalidade);
 
   const cursoNormal = 28*mensalidade + (valMatricula-mensalidade);
   const economia = cursoNormal - totalGeral;
@@ -166,8 +171,8 @@ function calcular(){
     <div class="modulo-card ${["m1","m2","m3"][curso.modulos.indexOf(m.mod)]}">
       <div class="mc-label">${m.mod.tag}</div>
       <div class="mc-name">${m.mod.titulo}</div>
-      <div class="mc-value">${m.totalMod===0?"—":fmt(mensalidade)}</div>
-      <div class="mc-sub">${m.totalMod===0?"Dispensado":`${Math.ceil(m.totalMod/mensalidade)}x de ${fmt(mensalidade)}`}</div>
+      <div class="mc-value">${m.nPCobradas===0?"—":m.nPCobradas}</div>
+      <div class="mc-sub">${m.nPCobradas===0?"Módulo dispensado":`parcelas de ${fmt(m.vp)}`}</div>
       <div class="mc-total">${fmt(m.totalMod)}</div>
     </div>`).join("");
 
@@ -175,7 +180,7 @@ function calcular(){
     <div class="tc-item">
       <div class="tc-label">Total a pagar</div>
       <div class="tc-value">${fmt(totalGeral)}</div>
-      <div class="tc-sub">${parcelasGeral}x de ${fmt(mensalidade)}</div>
+      <div class="tc-sub">${parcelasCalc}x de ${fmt(mensalidade)}</div>
     </div>
     <div class="tc-divider"></div>
     <div class="tc-item">
@@ -186,7 +191,7 @@ function calcular(){
     <div class="tc-divider"></div>
     <div class="tc-item">
       <div class="tc-label">Duração</div>
-      <div class="tc-value">${parcelasGeral} meses</div>
+      <div class="tc-value">${parcelasCalc} meses</div>
       <div class="tc-sub">integralização com a turma</div>
     </div>`;
 
@@ -198,25 +203,25 @@ function calcular(){
     `<div class="warning-box">⚠️ <span>${w}</span></div>`).join("");
 
   const rows = document.getElementById("breakdown-rows");
-  rows.innerHTML = "";
-  let parcelasUsadas = 0;
+  rows.innerHTML = `<div class="pb-row">
+    <div class="pb-num">Parcela 1</div><div>Matrícula</div>
+    <div class="pb-val">${fmt(valMatricula)}</div>
+    <div class="pb-tot">${fmt(valMatricula)}</div></div>`;
   resMods.forEach((m,i)=>{
-    const numP = m.totalMod > 0 ? Math.ceil(m.totalMod/mensalidade) : 0;
-    const p1 = numP > 0 ? parcelasUsadas + 1 : "–";
-    const p2 = numP > 0 ? parcelasUsadas + numP : "–";
-    if(numP > 0) parcelasUsadas += numP;
-    const desc = m.totalMod===0
+    const p1=curso.modulos[i].disciplinas.length>0 ? [2,11,20][i] : "–";
+    const p2=[10,19,28][i];
+    const desc = m.nPCobradas===0
       ? "Módulo totalmente dispensado"
       : `${(m.fator*100).toFixed(1)}% da mensalidade · ${m.r.chC}h integral + ${m.r.chComp}h compl. + ${m.r.chE}h em análise`;
     rows.innerHTML += `<div class="pb-row">
       <div class="pb-num">Parc. ${p1}–${p2}</div>
       <div>${m.mod.tag} — ${m.mod.titulo}<br><span class="pb-desc">${desc}</span></div>
-      <div class="pb-val">${m.totalMod===0?"—":fmt(mensalidade)}</div>
+      <div class="pb-val">${m.nPCobradas===0?"—":fmt(m.vp)}</div>
       <div class="pb-tot">${fmt(m.totalMod)}</div></div>`;
   });
   rows.innerHTML += `<div class="pb-row" style="background:#fff0f0;font-weight:700">
     <div class="pb-num">TOTAL</div>
-    <div>${parcelasUsadas} parcelas</div>
+    <div>${parcelasGeral} parcelas</div>
     <div></div>
     <div class="pb-tot" style="font-size:14px">${fmt(totalGeral)}</div></div>`;
 
@@ -329,26 +334,23 @@ function copiarResumo(){
     `Curso: ${curso.nome}`,
     `Data: ${new Date().toLocaleDateString("pt-BR")}`,
     "",
-    `Matrícula: ${fmt(vmat)}`,
+    `Matrícula (Parcela 1): ${fmt(vmat)}`,
   ];
-  let parcelasUsadas = 0;
   curso.modulos.forEach((mod,i)=>{
     const r=calcularFatorModulo(mod);
+    const numP=9;
     if(r.dispensadoTotal){
-      linhas.push(`${mod.tag}: DISPENSADO — R$ 0,00`);
+      linhas.push(`${mod.tag} (Parc. ${[2,11,20][i]}–${[10,19,28][i]}): DISPENSADO — R$ 0,00`);
     } else {
-      const tot=Math.round(mens*r.fator*100)/100;
-      const numP = Math.ceil(tot/mens);
-      const p1 = parcelasUsadas + 1;
-      const p2 = parcelasUsadas + numP;
-      parcelasUsadas += numP;
+      const vp=Math.round(mens*r.fator*100)/100;
+      const tot=Math.round(vp*numP*100)/100;
       total+=tot;
-      linhas.push(`${mod.tag} (Parc. ${p1}–${p2}): ${numP}x ${fmt(mens)} = ${fmt(tot)}`);
+      linhas.push(`${mod.tag} (Parc. ${[2,11,20][i]}–${[10,19,28][i]}): ${numP}x ${fmt(vp)} = ${fmt(tot)}`);
     }
   });
   const totalParcelas = Math.ceil(total/mens);
-  linhas.push("","TOTAL: "+fmt(total)+" em "+parcelasUsadas+" parcelas");
-  linhas.push("Duração: "+parcelasUsadas+" meses (integralização com a turma)");
+  linhas.push("","TOTAL: "+fmt(total)+" em "+parcelasGeral+" parcelas");
+  linhas.push("Duração: "+totalParcelas+" meses (integralização com a turma)");
   navigator.clipboard.writeText(linhas.join("\n"))
     .then(()=>alert("Resumo copiado para a área de transferência!"));
 }
@@ -368,7 +370,8 @@ function gerarCarta(){
 
   const hoje = new Date().toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"});
   let linhasDisp=[], linhasComp=[], linhasCursar=[], linhasEmentas=[];
-  let total=mens;
+  let total=vmat;
+  let parcelasFixas = 1;
   curso.modulos.forEach(mod=>{
     mod.disciplinas.forEach(d=>{
       const s=estado[d.id];
@@ -378,7 +381,11 @@ function gerarCarta(){
       if(s==="ementas")       linhasEmentas.push(`  • ${d.nome} (${d.ch}h)`);
     });
     const r=calcularFatorModulo(mod);
-    if(!r.dispensadoTotal){ total+=Math.round(mens*r.fator*100)/100; }
+    if(!r.dispensadoTotal){
+      const vp=Math.round(mens*r.fator*100)/100;
+      total+=Math.round(vp*9*100)/100;
+      parcelasFixas+=9;
+    }
   });
 
   const totalParcelas = Math.ceil(total/mens);
