@@ -139,7 +139,6 @@ function calcular(){
   const curso = CURSOS[cursoAtual];
 
   let totalGeral = valMatricula;
-  let parcelasGeral = 1;
   const resMods = [];
   const warnings = [];
 
@@ -153,13 +152,12 @@ function calcular(){
       nPCobradas = numP;
     }
     totalGeral += totalMod;
-    parcelasGeral += nPCobradas;
     if(r.chE>0 && !r.dispensadoTotal)
       warnings.push(`${mod.tag}: ${r.chE}h com status "Aguardando Ementas" — tratadas como complementar (1/3) até definição das ementas.`);
     resMods.push({mod, r, vp, totalMod, nPCobradas, numP, fator:r.fator});
   });
 
-  const parcelasCalc = Math.ceil(totalGeral / mensalidade);
+  const parcelasGeral = Math.ceil(totalGeral / mensalidade);
 
   const cursoNormal = 28*mensalidade + (valMatricula-mensalidade);
   const economia = cursoNormal - totalGeral;
@@ -180,7 +178,7 @@ function calcular(){
     <div class="tc-item">
       <div class="tc-label">Total a pagar</div>
       <div class="tc-value">${fmt(totalGeral)}</div>
-      <div class="tc-sub">${parcelasCalc}x de ${fmt(mensalidade)}</div>
+      <div class="tc-sub">${parcelasGeral}x de ${fmt(mensalidade)}</div>
     </div>
     <div class="tc-divider"></div>
     <div class="tc-item">
@@ -191,7 +189,7 @@ function calcular(){
     <div class="tc-divider"></div>
     <div class="tc-item">
       <div class="tc-label">Duração</div>
-      <div class="tc-value">${parcelasCalc} meses</div>
+      <div class="tc-value">${parcelasGeral} meses</div>
       <div class="tc-sub">integralização com a turma</div>
     </div>`;
 
@@ -349,7 +347,7 @@ function copiarResumo(){
     }
   });
   const totalParcelas = Math.ceil(total/mens);
-  linhas.push("","TOTAL: "+fmt(total)+" em "+parcelasGeral+" parcelas");
+  linhas.push("","TOTAL: "+fmt(total)+" em "+totalParcelas+" parcelas");
   linhas.push("Duração: "+totalParcelas+" meses (integralização com a turma)");
   navigator.clipboard.writeText(linhas.join("\n"))
     .then(()=>alert("Resumo copiado para a área de transferência!"));
