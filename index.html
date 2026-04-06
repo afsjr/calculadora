@@ -1,127 +1,154 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';">
-  <meta name="description" content="Calculadora interna de aproveitamento de estudos para a equipe comercial do CSM Tec.">
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self' 'nonce-csm2026'; style-src 'self' 'nonce-csm2026' https://fonts.googleapis.com; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com;">
+  <meta name="description"
+    content="Calculadora interna de aproveitamento de estudos para a equipe comercial do CSM Tec.">
   <meta name="robots" content="noindex, nofollow">
   <title>CSM Tec — Calculadora de Aproveitamento</title>
   <link rel="stylesheet" href="css/styles.css">
 </head>
+
 <body>
 
-<header>
-  <img src="assets/logo.png" alt="CSM Tec" class="header-logo">
-  <div class="header-divider"></div>
-  <div class="header-text">
-    <h1>Calculadora de Aproveitamento de Estudos</h1>
-    <p>Curso Técnico em Enfermagem · Uso interno — Equipe Comercial</p>
+  <header>
+    <img src="assets/logo.png" alt="CSM Tec" class="header-logo">
+    <div class="header-divider"></div>
+    <div class="header-text">
+      <h1>Calculadora de Aproveitamento de Estudos</h1>
+      <p>Curso Técnico em Enfermagem · Uso interno — Equipe Comercial</p>
+    </div>
+    <div class="header-badge">v2.0 · 2026</div>
+  </header>
+
+  <!-- TABS -->
+  <div class="tabs-bar">
+    <button class="tab-btn active" data-tab="calc">🧮 Novo cálculo</button>
+    <button class="tab-btn" data-tab="history">📋 Histórico de atendimentos</button>
   </div>
-  <div class="header-badge">v2.0 · 2026</div>
-</header>
 
-<!-- TABS -->
-<div class="tabs-bar">
-  <button class="tab-btn active" data-tab="calc">🧮 Novo cálculo</button>
-  <button class="tab-btn" data-tab="history">📋 Histórico de atendimentos</button>
-</div>
+  <main>
 
-<main>
+    <!-- ══ TAB: CÁLCULO ══ -->
+    <div class="tab-pane active" id="tab-calc">
 
-<!-- ══ TAB: CÁLCULO ══ -->
-<div class="tab-pane active" id="tab-calc">
-
-  <!-- Dados do aluno -->
-  <div class="card">
-    <h2>👤 Dados do Aluno</h2>
-    <div class="form-row">
-      <div class="form-group">
-        <label for="nome">Nome completo</label>
-        <input type="text" id="nome" placeholder="Ex: Larissa de Morais Félix">
+      <!-- Dados do aluno -->
+      <div class="card">
+        <h2>👤 Dados do Aluno</h2>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="nome">Nome completo</label>
+            <input type="text" id="nome" placeholder="Ex: Larissa de Morais Félix">
+          </div>
+          <div class="form-group">
+            <label for="matricula">Matrícula</label>
+            <input type="text" id="matricula" placeholder="Ex: ENF240253">
+          </div>
+          <div class="form-group">
+            <label for="origem">Instituição de origem</label>
+            <input type="text" id="origem" placeholder="Ex: Grau Técnico">
+          </div>
+          <div class="form-group">
+            <label for="val_matricula">Valor da matrícula (R$)</label>
+            <input type="number" id="val_matricula" value="370" step="0.01" min="0">
+          </div>
+          <div class="form-group">
+            <label for="mensalidade">Mensalidade (R$)</label>
+            <input type="number" id="mensalidade" value="370" step="0.01" min="0">
+          </div>
+        </div>
       </div>
-      <div class="form-group">
-        <label for="matricula">Matrícula</label>
-        <input type="text" id="matricula" placeholder="Ex: ENF240253">
+
+      <!-- Seletor de curso -->
+      <div class="card">
+        <h2>🎓 Curso</h2>
+        <div class="course-selector" id="course-selector"></div>
       </div>
-      <div class="form-group">
-        <label for="origem">Instituição de origem</label>
-        <input type="text" id="origem" placeholder="Ex: Grau Técnico">
+
+      <!-- Validação -->
+      <div class="validation-banner" id="val-banner">
+        <span>⚠️</span>
+        <div>
+          <strong>Classifique todas as disciplinas antes de calcular:</strong>
+          <ul class="val-list" id="val-list"></ul>
+        </div>
       </div>
-      <div class="form-group">
-        <label for="val_matricula">Valor da matrícula (R$)</label>
-        <input type="number" id="val_matricula" value="370" step="0.01" min="0">
+
+      <!-- Grade curricular -->
+      <div class="card" id="grade-card">
+        <h2>📋 Grade Curricular — Classifique cada disciplina</h2>
+        <div class="legend">
+          <div class="legend-item">
+            <div class="legend-dot ld-cursar"></div>Cursará integralmente
+          </div>
+          <div class="legend-item">
+            <div class="legend-dot ld-complementar"></div>Avaliação complementar (1/3)
+          </div>
+          <div class="legend-item">
+            <div class="legend-dot ld-dispensada"></div>Dispensada
+          </div>
+          <div class="legend-item">
+            <div class="legend-dot ld-ementas"></div>Aguardando ementas
+          </div>
+        </div>
+        <div id="grade-tables"></div>
+        <div style="display:flex;gap:10px;margin-top:22px;">
+          <button class="calc-btn" id="calcBtn" style="flex:1">⚡ Calcular Parcelas</button>
+          <button class="action-btn" id="undoBtn" style="padding:15px 20px;white-space:nowrap;">↩ Desfazer</button>
+        </div>
       </div>
-      <div class="form-group">
-        <label for="mensalidade">Mensalidade (R$)</label>
-        <input type="number" id="mensalidade" value="370" step="0.01" min="0">
+
+      <!-- Resultado -->
+      <div class="results-section print-card" id="results" style="display:none">
+        <h2>💰 Resultado — Parcelas do Aluno</h2>
+        <div id="result-aluno" style="font-size:13px;color:var(--ink-mid);margin-bottom:18px;"></div>
+        <div class="modulos-grid" id="modulos-grid"></div>
+        <div class="total-card" id="total-card"></div>
+        <div id="economy-area"></div>
+        <div id="warnings-area"></div>
+        <div class="pb-wrap">
+          <div class="pb-head">
+            <div>Parcelas</div>
+            <div>Módulo / Período</div>
+            <div>Valor unitário</div>
+            <div>Total</div>
+          </div>
+          <div id="breakdown-rows"></div>
+        </div>
+        <div class="action-row">
+          <button class="action-btn" data-action="imprimir">🖨️ Imprimir / Salvar PDF</button>
+          <button class="action-btn secondary" data-action="copiar">📋 Copiar resumo</button>
+          <button class="action-btn ghost" data-action="carta">📄 Gerar carta de aproveitamento</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ══ TAB: HISTÓRICO ══ -->
+    <div class="tab-pane" id="tab-history">
+      <div class="card">
+        <h2>📋 Histórico de Atendimentos</h2>
+        <p style="font-size:13px;color:var(--ink-mid);margin-bottom:18px;">Registro dos cálculos realizados nesta
+          sessão. Clique em um atendimento para recarregá-lo.</p>
+        <div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;">
+          <button class="action-btn" id="exportBtn" onclick="exportarHistorico()">📥 Exportar Histórico</button>
+          <button class="action-btn secondary" id="importBtn">📤 Importar Histórico</button>
+          <input type="file" id="importFile" accept=".json" style="display:none;">
+        </div>
+        <div id="history-container">
+          <div class="history-empty">Nenhum atendimento calculado ainda nesta sessão.</div>
+        </div>
       </div>
     </div>
-  </div>
 
-  <!-- Seletor de curso -->
-  <div class="card">
-    <h2>🎓 Curso</h2>
-    <div class="course-selector" id="course-selector"></div>
-  </div>
+  </main>
 
-  <!-- Validação -->
-  <div class="validation-banner" id="val-banner">
-    <span>⚠️</span>
-    <div>
-      <strong>Classifique todas as disciplinas antes de calcular:</strong>
-      <ul class="val-list" id="val-list"></ul>
-    </div>
-  </div>
-
-  <!-- Grade curricular -->
-  <div class="card" id="grade-card">
-    <h2>📋 Grade Curricular — Classifique cada disciplina</h2>
-    <div class="legend">
-      <div class="legend-item"><div class="legend-dot ld-cursar"></div>Cursará integralmente</div>
-      <div class="legend-item"><div class="legend-dot ld-complementar"></div>Avaliação complementar (1/3)</div>
-      <div class="legend-item"><div class="legend-dot ld-dispensada"></div>Dispensada</div>
-      <div class="legend-item"><div class="legend-dot ld-ementas"></div>Aguardando ementas</div>
-    </div>
-    <div id="grade-tables"></div>
-    <button class="calc-btn" id="calcBtn">⚡ Calcular Parcelas</button>
-  </div>
-
-  <!-- Resultado -->
-  <div class="results-section print-card" id="results" style="display:none">
-    <h2>💰 Resultado — Parcelas do Aluno</h2>
-    <div id="result-aluno" style="font-size:13px;color:var(--ink-mid);margin-bottom:18px;"></div>
-    <div class="modulos-grid" id="modulos-grid"></div>
-    <div class="total-card" id="total-card"></div>
-    <div id="economy-area"></div>
-    <div id="warnings-area"></div>
-    <div class="pb-wrap">
-      <div class="pb-head"><div>Parcelas</div><div>Módulo / Período</div><div>Valor unitário</div><div>Total</div></div>
-      <div id="breakdown-rows"></div>
-    </div>
-    <div class="action-row">
-      <button class="action-btn" data-action="imprimir">🖨️ Imprimir / Salvar PDF</button>
-      <button class="action-btn secondary" data-action="copiar">📋 Copiar resumo</button>
-      <button class="action-btn ghost" data-action="carta">📄 Gerar carta de aproveitamento</button>
-    </div>
-  </div>
-
-</div>
-
-<!-- ══ TAB: HISTÓRICO ══ -->
-<div class="tab-pane" id="tab-history">
-  <div class="card">
-    <h2>📋 Histórico de Atendimentos</h2>
-    <p style="font-size:13px;color:var(--ink-mid);margin-bottom:18px;">Registro dos cálculos realizados nesta sessão. Clique em um atendimento para recarregá-lo.</p>
-    <div id="history-container">
-      <div class="history-empty">Nenhum atendimento calculado ainda nesta sessão.</div>
-    </div>
-  </div>
-</div>
-
-</main>
-
-<script src="js/data.js"></script>
-<script src="js/app.js"></script>
+  <script src="js/data.js" nonce="csm2026"></script>
+  <script src="js/app.js" nonce="csm2026"></script>
 </body>
+
 </html>

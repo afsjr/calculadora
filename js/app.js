@@ -12,41 +12,61 @@ let estado = {};
 let obsState = {};
 let atendimentoHistory = [];
 let ultimoResultado = null;
+let estadoAnterior = null; // Para funcionalidade de desfazer
 
-function loadFromLocalStorage(){
+function loadFromLocalStorage() {
   try {
     const saved = localStorage.getItem("csm_calc_history");
-    if(saved) {
+    if (saved) {
       atendimentoHistory = JSON.parse(saved);
+      // Limpa registros com mais de 90 dias
+      limparHistoricoAntigo();
     }
-  } catch(e) {
+  } catch (e) {
     console.warn("Failed to load history from localStorage", e);
   }
 }
 
-function saveToLocalStorage(){
+function limparHistoricoAntigo() {
+  const diasLimite = 90;
+  const agora = new Date();
+  const historicoFiltrado = atendimentoHistory.filter(entry => {
+    const dataEntry = new Date(entry.ts.split('/').reverse().join('-'));
+    const diffDias = (agora - dataEntry) / (1000 * 60 * 60 * 24);
+    return diffDias <= diasLimite;
+  });
+
+  const removidos = atendimentoHistory.length - historicoFiltrado.length;
+  if (removidos > 0) {
+    atendimentoHistory = historicoFiltrado;
+    saveToLocalStorage();
+    console.log(`Limpeza automática: ${removidos} registros antigos removidos.`);
+  }
+}
+
+function saveToLocalStorage() {
   try {
     localStorage.setItem("csm_calc_history", JSON.stringify(atendimentoHistory));
-  } catch(e) {
+  } catch (e) {
     console.warn("Failed to save history to localStorage", e);
   }
 }
 
-function init(){
+function init() {
   loadFromLocalStorage();
-  
+
   document.getElementById("course-selector").addEventListener("click", (e) => {
     const btn = e.target.closest(".course-btn");
-    if(btn) selecionarCurso(btn.dataset.curso, btn);
+    if (btn) selecionarCurso(btn.dataset.curso, btn);
   });
-  
+
   document.getElementById("grade-tables").addEventListener("click", (e) => {
     const btn = e.target.closest(".status-btn");
-    if(btn) setStatus(btn.dataset.id, btn.dataset.status, btn.dataset.mod);
+    if (btn) setStatus(btn.dataset.id, btn.dataset.status, btn.dataset.mod);
   });
 
   document.getElementById("grade-tables").addEventListener("change", (e) => {
-    if(e.target.classList.contains("obs-input")){
+    if (e.target.classList.contains("obs-input")) {
       obsState[e.target.dataset.id] = e.target.value;
     }
   });
@@ -57,69 +77,83 @@ function init(){
 
   document.getElementById("calcBtn").addEventListener("click", calcular);
 
+  // Botão de desfazer
+  const undoBtn = document.getElementById("undoBtn");
+  if (undoBtn) {
+    undoBtn.addEventListener("click", desfazerUltimaMudanca);
+  }
+
   document.getElementById("results").addEventListener("click", (e) => {
     const btn = e.target.closest(".action-btn");
-    if(!btn) return;
+    if (!btn) return;
     const action = btn.dataset.action;
-    if(action === "imprimir"){
+    if (action === "imprimir") {
       imprimirRelatorio();
-    } else if(action === "copiar"){
+    } else if (action === "copiar") {
       copiarResumo();
-    } else if(action === "carta"){
+    } else if (action === "carta") {
       gerarCarta();
     }
   });
 
   document.getElementById("history-container").addEventListener("click", (e) => {
     const btn = e.target.closest(".hc-btn");
-    if(!btn) return;
-    if(btn.textContent.includes("Recarregar")){
+    if (!btn) return;
+    if (btn.textContent.includes("Recarregar")) {
       const id = parseInt(btn.dataset.id);
       recarregarAtendimento(id);
-    } else if(btn.textContent.includes("Remover")){
+    } else if (btn.textContent.includes("Remover")) {
       const id = parseInt(btn.dataset.id);
       removerHistorico(id);
     }
   });
 
+  // Botão de importar
+  const importBtn = document.getElementById("importBtn");
+  const importFile = document.getElementById("importFile");
+  if (importBtn && importFile) {
+    importBtn.addEventListener("click", () => importFile.click());
+    importFile.addEventListener("change", importarHistorico);
+  }
+
   const cs = document.getElementById("course-selector");
-  cs.innerHTML = Object.entries(CURSOS).map(([k,v])=>
-    `<button class="course-btn ${k===cursoAtual?"active":""}" data-curso="${k}">${v.nome}</button>`
+  cs.innerHTML = Object.entries(CURSOS).map(([k, v]) =>
+    `<button class="course-btn ${k === cursoAtual ? "active" : ""}" data-curso="${k}">${v.nome}</button>`
   ).join("");
   resetEstado();
   renderGrade();
 }
 
-function selecionarCurso(key, btn){
+function selecionarCurso(key, btn) {
   cursoAtual = key;
-  document.querySelectorAll(".course-btn").forEach(b=>b.classList.remove("active"));
+  document.querySelectorAll(".course-btn").forEach(b => b.classList.remove("active"));
   btn.classList.add("active");
   resetEstado();
   renderGrade();
-  document.getElementById("results").style.display="none";
+  document.getElementById("results").style.display = "none";
 }
 
-function resetEstado(){
+function resetEstado() {
   estado = {};
   obsState = {};
   const curso = CURSOS[cursoAtual];
-  curso.modulos.forEach(mod=>{
-    mod.disciplinas.forEach(d=>{ estado[d.id]=d.def; obsState[d.id]=""; });
+  curso.modulos.forEach(mod => {
+    mod.disciplinas.forEach(d => { estado[d.id] = d.def; obsState[d.id] = ""; });
   });
 }
 
 // ══════════════════════════════════════════════
 // RENDER GRADE
 // ══════════════════════════════════════════════
-const STATUS_LABELS = {cursar:"Cursará",complementar:"Complementar",dispensada:"Dispensada",ementas:"Ag. Ementas"};
+const STATUS_LABELS = { cursar: "Cursará", complementar: "Complementar", dispensada: "Dispensada", ementas: "Ag. Ementas" };
 
-function renderGrade(){
+function renderGrade() {
   const curso = CURSOS[cursoAtual];
   const container = document.getElementById("grade-tables");
   container.innerHTML = "";
-  curso.modulos.forEach(mod=>{
-    const chAtivas = mod.disciplinas.filter(d=>estado[d.id]!=="dispensada").reduce((s,d)=>s+d.ch,0);
-    const chDisp   = mod.disciplinas.filter(d=>estado[d.id]==="dispensada").reduce((s,d)=>s+d.ch,0);
+  curso.modulos.forEach(mod => {
+    const chAtivas = mod.disciplinas.filter(d => estado[d.id] !== "dispensada").reduce((s, d) => s + d.ch, 0);
+    const chDisp = mod.disciplinas.filter(d => estado[d.id] === "dispensada").reduce((s, d) => s + d.ch, 0);
     const header = document.createElement("div");
     header.className = "modulo-header";
     header.innerHTML = `<span class="modulo-tag ${mod.tagClass}">${sanitize(mod.tag)}</span>
@@ -133,20 +167,20 @@ function renderGrade(){
       <th>Disciplina</th><th>C/H</th><th style="text-align:center">Status</th><th>Observação</th>
     </tr></thead>`;
     const tbody = document.createElement("tbody");
-    mod.disciplinas.forEach(d=>{
+    mod.disciplinas.forEach(d => {
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${sanitize(d.nome)}</td>
         <td><span class="ch-badge">${d.ch}h</span></td>
         <td>
           <div class="status-group">
-            ${["cursar","complementar","dispensada","ementas"].map(s=>`
-              <button class="status-btn btn-${s} ${estado[d.id]===s?"active":""}"
-                data-id="${d.id}" data-status="${s}" data-mod="${mod.id}" aria-pressed="${estado[d.id]===s}">${STATUS_LABELS[s]}</button>`).join("")}
+            ${["cursar", "complementar", "dispensada", "ementas"].map(s => `
+              <button class="status-btn btn-${s} ${estado[d.id] === s ? "active" : ""}"
+                data-id="${d.id}" data-status="${s}" data-mod="${mod.id}" aria-pressed="${estado[d.id] === s}">${STATUS_LABELS[s]}</button>`).join("")}
           </div>
         </td>
         <td><textarea class="obs-input" rows="1" placeholder="Observação (opcional)"
-          data-id="${d.id}">${obsState[d.id]||""}</textarea></td>`;
+          data-id="${d.id}">${obsState[d.id] || ""}</textarea></td>`;
       tbody.appendChild(tr);
     });
     table.appendChild(tbody);
@@ -154,9 +188,12 @@ function renderGrade(){
   });
 }
 
-function setStatus(discId, status, modId){
+function setStatus(discId, status, modId) {
+  // Salva estado anterior para desfazer
+  estadoAnterior = { ...estado };
+
   estado[discId] = status;
-  
+
   const container = document.getElementById("grade-tables");
   const buttons = container.querySelectorAll(`.status-btn[data-id="${discId}"]`);
   buttons.forEach(btn => {
@@ -164,37 +201,48 @@ function setStatus(discId, status, modId){
     btn.classList.toggle("active", isActive);
     btn.setAttribute("aria-pressed", isActive);
   });
-  
+
   atualizarTotaisModulo(modId);
 }
 
-function atualizarTotaisModulo(modId){
+function desfazerUltimaMudanca() {
+  if (!estadoAnterior) {
+    alert("Não há mudanças para desfazer.");
+    return;
+  }
+
+  estado = { ...estadoAnterior };
+  estadoAnterior = null;
+  renderGrade();
+}
+
+function atualizarTotaisModulo(modId) {
   const curso = CURSOS[cursoAtual];
   const mod = curso.modulos.find(m => m.id === modId);
-  if(!mod) return;
-  
-  const chAtivas = mod.disciplinas.filter(d=>estado[d.id]!=="dispensada").reduce((s,d)=>s+d.ch,0);
-  const chDisp = mod.disciplinas.filter(d=>estado[d.id]==="dispensada").reduce((s,d)=>s+d.ch,0);
-  
+  if (!mod) return;
+
+  const chAtivas = mod.disciplinas.filter(d => estado[d.id] !== "dispensada").reduce((s, d) => s + d.ch, 0);
+  const chDisp = mod.disciplinas.filter(d => estado[d.id] === "dispensada").reduce((s, d) => s + d.ch, 0);
+
   const el = document.getElementById(`ch-${modId}`);
-  if(el) el.textContent = `${chAtivas}h em aula · ${chDisp}h dispensadas / ${mod.totalCH}h total`;
+  if (el) el.textContent = `${chAtivas}h em aula · ${chDisp}h dispensadas / ${mod.totalCH}h total`;
 }
 
 // ══════════════════════════════════════════════
 // VALIDATION
 // ══════════════════════════════════════════════
-function validar(){
+function validar() {
   const curso = CURSOS[cursoAtual];
   const ementas = [];
-  curso.modulos.forEach(mod=>{
-    mod.disciplinas.forEach(d=>{
-      if(estado[d.id]==="ementas") ementas.push(d.nome);
+  curso.modulos.forEach(mod => {
+    mod.disciplinas.forEach(d => {
+      if (estado[d.id] === "ementas") ementas.push(d.nome);
     });
   });
   const banner = document.getElementById("val-banner");
   const list = document.getElementById("val-list");
-  if(ementas.length>0){
-    list.innerHTML = ementas.map(n=>`<li>${sanitize(n)} — aguardando ementas: tratada como complementar (1/3) no cálculo</li>`).join("");
+  if (ementas.length > 0) {
+    list.innerHTML = ementas.map(n => `<li>${sanitize(n)} — aguardando ementas: tratada como complementar (1/3) no cálculo</li>`).join("");
     banner.classList.add("show");
   } else {
     banner.classList.remove("show");
@@ -202,30 +250,53 @@ function validar(){
   return true;
 }
 
+function validarFormulario() {
+  const nome = document.getElementById("nome").value.trim();
+  const matricula = document.getElementById("matricula").value.trim();
+  const mensalidade = parseFloat(document.getElementById("mensalidade").value);
+  const valMatricula = parseFloat(document.getElementById("val_matricula").value);
+
+  const erros = [];
+
+  if (!nome) erros.push("Nome do aluno é obrigatório");
+  if (!matricula) erros.push("Matrícula é obrigatória");
+  if (isNaN(mensalidade) || mensalidade <= 0) erros.push("Mensalidade deve ser um valor positivo");
+  if (isNaN(valMatricula) || valMatricula < 0) erros.push("Valor da matrícula deve ser zero ou positivo");
+
+  if (erros.length > 0) {
+    alert("⚠️ Por favor, corrija os seguintes campos:\n\n• " + erros.join("\n• "));
+    return false;
+  }
+
+  return true;
+}
+
 // ══════════════════════════════════════════════
 // CALCULAR
 // ══════════════════════════════════════════════
-function calcularFatorModulo(mod){
-  let chC=0,chComp=0,chD=0,chE=0;
-  mod.disciplinas.forEach(d=>{
-    const s=estado[d.id];
-    if(s==="cursar")       chC+=d.ch;
-    if(s==="complementar") chComp+=d.ch;
-    if(s==="dispensada")   chD+=d.ch;
-    if(s==="ementas")      chE+=d.ch;
+function calcularFatorModulo(mod) {
+  let chC = 0, chComp = 0, chD = 0, chE = 0;
+  mod.disciplinas.forEach(d => {
+    const s = estado[d.id];
+    if (s === "cursar") chC += d.ch;
+    if (s === "complementar") chComp += d.ch;
+    if (s === "dispensada") chD += d.ch;
+    if (s === "ementas") chE += d.ch;
   });
   const total = mod.totalCH;
-  const fator = chC/total + (chComp/total)*(1/3) + (chE/total)*(1/3);
-  const dispensadoTotal = (chC+chComp+chE)===0;
-  return {fator,chC,chComp,chD,chE,dispensadoTotal};
+  const fator = chC / total + (chComp / total) * (1 / 3) + (chE / total) * (1 / 3);
+  const dispensadoTotal = (chC + chComp + chE) === 0;
+  return { fator, chC, chComp, chD, chE, dispensadoTotal };
 }
 
-function fmt(v){ return "R$ "+v.toLocaleString("pt-BR",{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmt(v) { return "R$ " + v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
-function calcular(){
+function calcular() {
+  if (!validarFormulario()) return;
+
   validar();
-  const mensalidade = parseFloat(document.getElementById("mensalidade").value)||370;
-  const valMatricula = parseFloat(document.getElementById("val_matricula").value)||370;
+  const mensalidade = parseFloat(document.getElementById("mensalidade").value) || 370;
+  const valMatricula = parseFloat(document.getElementById("val_matricula").value) || 370;
   const nome = document.getElementById("nome").value.trim();
   const matricula = document.getElementById("matricula").value.trim();
   const origem = document.getElementById("origem").value.trim();
@@ -235,35 +306,35 @@ function calcular(){
   const resMods = [];
   const warnings = [];
 
-  curso.modulos.forEach(mod=>{
+  curso.modulos.forEach(mod => {
     const r = calcularFatorModulo(mod);
     const numP = mod.disciplinas.length > 0 ? 9 : 0;
-    let vp=0, totalMod=0, nPCobradas=0;
-    if(!r.dispensadoTotal){
-      vp = Math.round(mensalidade*r.fator*100)/100;
-      totalMod = Math.round(vp*numP*100)/100;
+    let vp = 0, totalMod = 0, nPCobradas = 0;
+    if (!r.dispensadoTotal) {
+      vp = Math.round(mensalidade * r.fator * 100) / 100;
+      totalMod = Math.round(vp * numP * 100) / 100;
       nPCobradas = numP;
     }
     totalGeral += totalMod;
-    if(r.chE>0 && !r.dispensadoTotal)
+    if (r.chE > 0 && !r.dispensadoTotal)
       warnings.push(`${mod.tag}: ${r.chE}h com status "Aguardando Ementas" — tratadas como complementar (1/3) até definição das ementas.`);
-    resMods.push({mod, r, vp, totalMod, nPCobradas, numP, fator:r.fator});
+    resMods.push({ mod, r, vp, totalMod, nPCobradas, numP, fator: r.fator });
   });
 
   const parcelasGeral = Math.ceil(totalGeral / mensalidade);
 
-  const cursoNormal = 28*mensalidade + (valMatricula-mensalidade);
+  const cursoNormal = 28 * mensalidade + (valMatricula - mensalidade);
   const economia = cursoNormal - totalGeral;
 
   document.getElementById("result-aluno").innerHTML =
-    `<strong>${sanitize(nome)||"Aluno"}</strong>${matricula?" · Mat: "+sanitize(matricula):""}${origem?" · Origem: "+sanitize(origem):""} · ${sanitize(curso.nome)} · <em>${new Date().toLocaleDateString("pt-BR")}</em>`;
+    `<strong>${sanitize(nome) || "Aluno"}</strong>${matricula ? " · Mat: " + sanitize(matricula) : ""}${origem ? " · Origem: " + sanitize(origem) : ""} · ${sanitize(curso.nome)} · <em>${new Date().toLocaleDateString("pt-BR")}</em>`;
 
-  document.getElementById("modulos-grid").innerHTML = resMods.map(m=>`
-    <div class="modulo-card ${["m1","m2","m3"][curso.modulos.indexOf(m.mod)]}">
+  document.getElementById("modulos-grid").innerHTML = resMods.map(m => `
+    <div class="modulo-card ${["m1", "m2", "m3"][curso.modulos.indexOf(m.mod)]}">
       <div class="mc-label">${m.mod.tag}</div>
       <div class="mc-name">${sanitize(m.mod.titulo)}</div>
-      <div class="mc-value">${m.nPCobradas===0?"—":m.nPCobradas}</div>
-      <div class="mc-sub">${m.nPCobradas===0?"Módulo dispensado":`parcelas de ${fmt(m.vp)}`}</div>
+      <div class="mc-value">${m.nPCobradas === 0 ? "—" : m.nPCobradas}</div>
+      <div class="mc-sub">${m.nPCobradas === 0 ? "Módulo dispensado" : `parcelas de ${fmt(m.vp)}`}</div>
       <div class="mc-total">${fmt(m.totalMod)}</div>
     </div>`).join("");
 
@@ -286,11 +357,11 @@ function calcular(){
       <div class="tc-sub">integralização com a turma</div>
     </div>`;
 
-  document.getElementById("economy-area").innerHTML = economia>0
+  document.getElementById("economy-area").innerHTML = economia > 0
     ? `<div class="economy-banner">🎉 <span>O aluno economiza <strong>${fmt(economia)}</strong> em relação ao curso sem aproveitamento (${fmt(cursoNormal)} → ${fmt(totalGeral)})</span></div>`
     : "";
 
-  document.getElementById("warnings-area").innerHTML = warnings.map(w=>
+  document.getElementById("warnings-area").innerHTML = warnings.map(w =>
     `<div class="warning-box">⚠️ <span>${sanitize(w)}</span></div>`).join("");
 
   const rows = document.getElementById("breakdown-rows");
@@ -298,16 +369,16 @@ function calcular(){
     <div class="pb-num">Parcela 1</div><div>Matrícula</div>
     <div class="pb-val">${fmt(valMatricula)}</div>
     <div class="pb-tot">${fmt(valMatricula)}</div></div>`;
-  resMods.forEach((m,i)=>{
-    const p1=m.mod.disciplinas.length>0 ? m.mod.parcelaInicio : "–";
-    const p2=m.mod.parcelaFim;
-    const desc = m.nPCobradas===0
+  resMods.forEach((m, i) => {
+    const p1 = m.mod.disciplinas.length > 0 ? m.mod.parcelaInicio : "–";
+    const p2 = m.mod.parcelaFim;
+    const desc = m.nPCobradas === 0
       ? "Módulo totalmente dispensado"
-      : `${(m.fator*100).toFixed(1)}% da mensalidade · ${m.r.chC}h integral + ${m.r.chComp}h compl. + ${m.r.chE}h em análise`;
+      : `${(m.fator * 100).toFixed(1)}% da mensalidade · ${m.r.chC}h integral + ${m.r.chComp}h compl. + ${m.r.chE}h em análise`;
     rows.innerHTML += `<div class="pb-row">
       <div class="pb-num">Parc. ${p1}–${p2}</div>
       <div>${m.mod.tag} — ${m.mod.titulo}<br><span class="pb-desc">${desc}</span></div>
-      <div class="pb-val">${m.nPCobradas===0?"—":fmt(m.vp)}</div>
+      <div class="pb-val">${m.nPCobradas === 0 ? "—" : fmt(m.vp)}</div>
       <div class="pb-tot">${fmt(m.totalMod)}</div></div>`;
   });
   rows.innerHTML += `<div class="pb-row" style="background:#fff0f0;font-weight:700">
@@ -316,23 +387,23 @@ function calcular(){
     <div></div>
     <div class="pb-tot" style="font-size:14px">${fmt(totalGeral)}</div></div>`;
 
-  document.getElementById("results").style.display="block";
-  document.getElementById("results").scrollIntoView({behavior:"smooth",block:"start"});
-  
+  document.getElementById("results").style.display = "block";
+  document.getElementById("results").scrollIntoView({ behavior: "smooth", block: "start" });
+
   ultimoResultado = {
     nome, matricula, origem,
     mensalidade, valMatricula,
     curso: curso.nome,
     resMods, totalGeral, parcelasGeral, economia, cursoNormal
   };
-  
-  salvarHistorico({nome,matricula,origem,curso:curso.nome,totalGeral,parcelasGeral,economia,valMatricula,mensalidade,estadoSnap:{...estado},obsSnap:{...obsState}});
+
+  salvarHistorico({ nome, matricula, origem, curso: curso.nome, totalGeral, parcelasGeral, economia, valMatricula, mensalidade, estadoSnap: { ...estado }, obsSnap: { ...obsState } });
 }
 
 // ══════════════════════════════════════════════
 // HISTÓRICO
 // ══════════════════════════════════════════════
-function salvarHistorico(entry){
+function salvarHistorico(entry) {
   entry.ts = new Date().toLocaleString("pt-BR");
   entry.id = Date.now();
   atendimentoHistory.unshift(entry);
@@ -340,18 +411,18 @@ function salvarHistorico(entry){
   renderHistory();
 }
 
-function renderHistory(){
+function renderHistory() {
   const c = document.getElementById("history-container");
-  if(atendimentoHistory.length===0){
-    c.innerHTML='<div class="history-empty">Nenhum atendimento calculado ainda nesta sessão.</div>';
+  if (atendimentoHistory.length === 0) {
+    c.innerHTML = '<div class="history-empty">Nenhum atendimento calculado ainda nesta sessão.</div>';
     return;
   }
-  c.innerHTML = `<div class="history-list">${atendimentoHistory.map(e=>`
+  c.innerHTML = `<div class="history-list">${atendimentoHistory.map(e => `
     <div class="history-card" id="hc-${e.id}">
       <div class="hc-header">
         <div>
-          <div class="hc-name">${sanitize(e.nome)||"Aluno sem nome"}</div>
-          <div class="hc-mat">${sanitize(e.matricula)||"Sem matrícula"}${e.origem?" · "+sanitize(e.origem):""}</div>
+          <div class="hc-name">${sanitize(e.nome) || "Aluno sem nome"}</div>
+          <div class="hc-mat">${sanitize(e.matricula) || "Sem matrícula"}${e.origem ? " · " + sanitize(e.origem) : ""}</div>
         </div>
         <span class="hc-curso">${sanitize(e.curso)}</span>
         <span class="hc-date">${e.ts}</span>
@@ -369,82 +440,207 @@ function renderHistory(){
     </div>`).join("")}</div>`;
 }
 
-function recarregarAtendimento(id){
-  const e = atendimentoHistory.find(h=>h.id===id);
-  if(!e) return;
-  document.getElementById("nome").value = e.nome||"";
-  document.getElementById("matricula").value = e.matricula||"";
-  document.getElementById("origem").value = e.origem||"";
-  document.getElementById("mensalidade").value = e.mensalidade||370;
-  document.getElementById("val_matricula").value = e.valMatricula||370;
-  estado = {...e.estadoSnap};
-  obsState = {...e.obsSnap};
+function recarregarAtendimento(id) {
+  const e = atendimentoHistory.find(h => h.id === id);
+  if (!e) return;
+  document.getElementById("nome").value = e.nome || "";
+  document.getElementById("matricula").value = e.matricula || "";
+  document.getElementById("origem").value = e.origem || "";
+  document.getElementById("mensalidade").value = e.mensalidade || 370;
+  document.getElementById("val_matricula").value = e.valMatricula || 370;
+  estado = { ...e.estadoSnap };
+  obsState = { ...e.obsSnap };
   renderGrade();
   calcular();
   switchTab("calc", document.querySelector(".tab-btn"));
 }
 
-function removerHistorico(id){
-  atendimentoHistory = atendimentoHistory.filter(h=>h.id!==id);
+function removerHistorico(id) {
+  atendimentoHistory = atendimentoHistory.filter(h => h.id !== id);
   saveToLocalStorage();
   renderHistory();
+}
+
+function exportarHistorico() {
+  if (atendimentoHistory.length === 0) {
+    alert("Não há dados no histórico para exportar.");
+    return;
+  }
+
+  const dados = JSON.stringify(atendimentoHistory, null, 2);
+  const blob = new Blob([dados], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `csm-historico-${new Date().toISOString().split('T')[0]}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  alert(`✅ Histórico exportado com sucesso! (${atendimentoHistory.length} registros)`);
+}
+
+function importarHistorico(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    try {
+      const dados = JSON.parse(e.target.result);
+
+      if (!Array.isArray(dados)) {
+        alert("❌ Arquivo inválido. O arquivo deve conter um array de registros.");
+        return;
+      }
+
+      const totalImportado = dados.length;
+
+      // Mescla com histórico existente (evita duplicatas por ID)
+      const idsExistentes = new Set(atendimentoHistory.map(h => h.id));
+      let adicionados = 0;
+
+      dados.forEach(entry => {
+        if (!idsExistentes.has(entry.id)) {
+          atendimentoHistory.unshift(entry);
+          adicionados++;
+        }
+      });
+
+      saveToLocalStorage();
+      renderHistory();
+
+      alert(`✅ Histórico importado com sucesso!\n${adicionados} novos registros adicionados de ${totalImportado} totais.`);
+
+    } catch (err) {
+      alert("❌ Erro ao importar arquivo: arquivo JSON inválido ou corrompido.");
+      console.error("Erro na importação:", err);
+    }
+  };
+
+  reader.onerror = function () {
+    alert("❌ Erro ao ler o arquivo.");
+  };
+
+  reader.readAsText(file);
+  event.target.value = ""; // Reset input
 }
 
 // ══════════════════════════════════════════════
 // TABS
 // ══════════════════════════════════════════════
-function switchTab(tab, btn){
-  document.querySelectorAll(".tab-pane").forEach(p=>p.classList.remove("active"));
-  document.querySelectorAll(".tab-btn").forEach(b=>b.classList.remove("active"));
-  document.getElementById("tab-"+tab).classList.add("active");
+function switchTab(tab, btn) {
+  document.querySelectorAll(".tab-pane").forEach(p => p.classList.remove("active"));
+  document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+  document.getElementById("tab-" + tab).classList.add("active");
   btn.classList.add("active");
 }
 
 // ══════════════════════════════════════════════
 // PRINT
 // ══════════════════════════════════════════════
-function imprimirRelatorio(){
+function imprimirRelatorio() {
   const results = document.getElementById("results");
-  if(results.style.display==="none"){ alert("Calcule as parcelas primeiro."); return; }
-  const nome = document.getElementById("nome").value||"Aluno";
-  const mat  = document.getElementById("matricula").value||"";
-  const old  = document.title;
-  document.title = `CSM Tec — Aproveitamento — ${nome}${mat?" ("+mat+")":""}`;
+  if (results.style.display === "none") { alert("Calcule as parcelas primeiro."); return; }
+  const nome = document.getElementById("nome").value || "Aluno";
+  const mat = document.getElementById("matricula").value || "";
+  const old = document.title;
+  document.title = `CSM Tec — Aproveitamento — ${nome}${mat ? " (" + mat + ")" : ""}`;
+
+  showNotification("🖨️ Abrindo diálogo de impressão...", "info");
+
   window.print();
-  setTimeout(()=>{ document.title=old; },1000);
+  setTimeout(() => { document.title = old; }, 1000);
 }
+
+function showNotification(message, type = "success") {
+  const notification = document.createElement("div");
+  notification.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 15px 25px;
+    border-radius: 10px;
+    font-family: "DM Sans", sans-serif;
+    font-size: 14px;
+    font-weight: 500;
+    z-index: 10000;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    animation: slideIn 0.3s ease-out;
+    ${type === "success"
+      ? "background: #f0fdf4; border: 2px solid #86efac; color: #166534;"
+      : type === "error"
+        ? "background: #fef2f2; border: 2px solid #fca5a5; color: #991b1b;"
+        : "background: #eff6ff; border: 2px solid #93c5fd; color: #1e40af;"}
+  `;
+  notification.textContent = message;
+
+  document.body.appendChild(notification);
+
+  setTimeout(() => {
+    notification.style.animation = "slideOut 0.3s ease-out";
+    setTimeout(() => document.body.removeChild(notification), 300);
+  }, 3000);
+}
+
+// Adiciona animações CSS
+const style = document.createElement("style");
+style.textContent = `
+  @keyframes slideIn {
+    from {
+      transform: translateX(400px);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+  @keyframes slideOut {
+    from {
+      transform: translateX(0);
+      opacity: 1;
+    }
+    to {
+      transform: translateX(400px);
+      opacity: 0;
+    }
+  }
+`;
+document.head.appendChild(style);
 
 // ══════════════════════════════════════════════
 // COPIAR RESUMO
 // ══════════════════════════════════════════════
-function copiarResumo(){
+function copiarResumo() {
   const results = document.getElementById("results");
-  if(results.style.display==="none"){ alert("Calcule as parcelas primeiro."); return; }
-  
-  const nome = document.getElementById("nome").value||"Aluno";
-  const mat  = document.getElementById("matricula").value||"";
-  const orig = document.getElementById("origem").value||"";
-  const mens = parseFloat(document.getElementById("mensalidade").value)||370;
-  const vmat = parseFloat(document.getElementById("val_matricula").value)||370;
-  
+  if (results.style.display === "none") { alert("Calcule as parcelas primeiro."); return; }
+
+  const nome = document.getElementById("nome").value || "Aluno";
+  const mat = document.getElementById("matricula").value || "";
+  const orig = document.getElementById("origem").value || "";
+  const mens = parseFloat(document.getElementById("mensalidade").value) || 370;
+  const vmat = parseFloat(document.getElementById("val_matricula").value) || 370;
+
   let total, linhas, totalParcelas;
-  
-  if(ultimoResultado && ultimoResultado.nome === nome && ultimoResultado.mensalidade === mens){
+
+  if (ultimoResultado && ultimoResultado.nome === nome && ultimoResultado.mensalidade === mens) {
     total = ultimoResultado.totalGeral;
     totalParcelas = ultimoResultado.parcelasGeral;
     linhas = [
       "APROVEITAMENTO DE ESTUDOS — CSM TEC",
-      `Aluno: ${nome}${mat?" | Mat: "+mat:""}${orig?" | Origem: "+orig:""}`,
+      `Aluno: ${nome}${mat ? " | Mat: " + mat : ""}${orig ? " | Origem: " + orig : ""}`,
       `Curso: ${ultimoResultado.curso}`,
       `Data: ${new Date().toLocaleDateString("pt-BR")}`,
       "",
       `Matrícula (Parcela 1): ${fmt(vmat)}`,
     ];
-    
+
     ultimoResultado.resMods.forEach(m => {
       const pStart = m.mod.parcelaInicio;
       const pEnd = m.mod.parcelaFim;
-      if(m.nPCobradas===0){
+      if (m.nPCobradas === 0) {
         linhas.push(`${m.mod.tag} (Parc. ${pStart}–${pEnd}): DISPENSADO — R$ 0,00`);
       } else {
         linhas.push(`${m.mod.tag} (Parc. ${pStart}–${pEnd}): ${m.nPCobradas}x ${fmt(m.vp)} = ${fmt(m.totalMod)}`);
@@ -455,38 +651,38 @@ function copiarResumo(){
     total = vmat;
     linhas = [
       "APROVEITAMENTO DE ESTUDOS — CSM TEC",
-      `Aluno: ${nome}${mat?" | Mat: "+mat:""}${orig?" | Origem: "+orig:""}`,
+      `Aluno: ${nome}${mat ? " | Mat: " + mat : ""}${orig ? " | Origem: " + orig : ""}`,
       `Curso: ${curso.nome}`,
       `Data: ${new Date().toLocaleDateString("pt-BR")}`,
       "",
       `Matrícula (Parcela 1): ${fmt(vmat)}`,
     ];
-    curso.modulos.forEach((mod, i)=>{
-      const r=calcularFatorModulo(mod);
-      const numP=mod.numParcelas;
+    curso.modulos.forEach((mod, i) => {
+      const r = calcularFatorModulo(mod);
+      const numP = mod.numParcelas;
       const pStart = mod.parcelaInicio;
       const pEnd = mod.parcelaFim;
-      if(r.dispensadoTotal){
+      if (r.dispensadoTotal) {
         linhas.push(`${mod.tag} (Parc. ${pStart}–${pEnd}): DISPENSADO — R$ 0,00`);
       } else {
-        const vp=Math.round(mens*r.fator*100)/100;
-        const tot=Math.round(vp*numP*100)/100;
-        total+=tot;
+        const vp = Math.round(mens * r.fator * 100) / 100;
+        const tot = Math.round(vp * numP * 100) / 100;
+        total += tot;
         linhas.push(`${mod.tag} (Parc. ${pStart}–${pEnd}): ${numP}x ${fmt(vp)} = ${fmt(tot)}`);
       }
     });
-    totalParcelas = Math.ceil(total/mens);
+    totalParcelas = Math.ceil(total / mens);
   }
-  
-  linhas.push("","TOTAL: "+fmt(total)+" em "+totalParcelas+" parcelas");
-  linhas.push("Duração: "+totalParcelas+" meses (integralização com a turma)");
+
+  linhas.push("", "TOTAL: " + fmt(total) + " em " + totalParcelas + " parcelas");
+  linhas.push("Duração: " + totalParcelas + " meses (integralização com a turma)");
   const texto = linhas.join("\n");
-  
-  function showSuccess(){
-    alert("Resumo copiado para a área de transferência!");
+
+  function showSuccess() {
+    showNotification("📋 Resumo copiado para a área de transferência!", "success");
   }
-  
-  function fallbackCopy(){
+
+  function fallbackCopy() {
     const ta = document.createElement("textarea");
     ta.value = texto;
     ta.style.position = "fixed";
@@ -495,14 +691,14 @@ function copiarResumo(){
     ta.select();
     const copied = document.execCommand("copy");
     document.body.removeChild(ta);
-    if(copied){
+    if (copied) {
       showSuccess();
     } else {
-      alert("Não foi possível copiar. Por favor, selecione e copie manualmente.");
+      showNotification("❌ Não foi possível copiar. Por favor, selecione e copie manualmente.", "error");
     }
   }
-  
-  if(navigator.clipboard && navigator.clipboard.writeText){
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(texto).then(showSuccess).catch(fallbackCopy);
   } else {
     fallbackCopy();
@@ -512,37 +708,39 @@ function copiarResumo(){
 // ══════════════════════════════════════════════
 // GERAR CARTA
 // ══════════════════════════════════════════════
-function gerarCarta(){
+function gerarCarta() {
   const results = document.getElementById("results");
-  if(results.style.display==="none"){ alert("Calcule as parcelas primeiro."); return; }
-  const nome = document.getElementById("nome").value||"[Nome do aluno]";
-  const mat  = document.getElementById("matricula").value||"[Matrícula]";
-  const orig = document.getElementById("origem").value||"[Instituição de origem]";
-  const mens = parseFloat(document.getElementById("mensalidade").value)||370;
-  const vmat = parseFloat(document.getElementById("val_matricula").value)||370;
+  if (results.style.display === "none") { alert("Calcule as parcelas primeiro."); return; }
+  const nome = document.getElementById("nome").value || "[Nome do aluno]";
+  const mat = document.getElementById("matricula").value || "[Matrícula]";
+  const orig = document.getElementById("origem").value || "[Instituição de origem]";
+  const mens = parseFloat(document.getElementById("mensalidade").value) || 370;
+  const vmat = parseFloat(document.getElementById("val_matricula").value) || 370;
   const curso = CURSOS[cursoAtual];
 
-  const hoje = new Date().toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"});
+  showNotification("📄 Gerando carta de aproveitamento...", "info");
+
+  const hoje = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
   const dataHoje = new Date().toLocaleDateString("pt-BR");
-  
-  let linhasDisp=[], linhasComp=[], linhasCursar=[], linhasEmentas=[];
-  let total=vmat;
-  curso.modulos.forEach(mod=>{
-    mod.disciplinas.forEach(d=>{
-      const s=estado[d.id];
-      if(s==="dispensada")    linhasDisp.push(`  • ${sanitize(d.nome)} (${d.ch}h)`);
-      if(s==="complementar")  linhasComp.push(`  • ${sanitize(d.nome)} (${d.ch}h)`);
-      if(s==="cursar")        linhasCursar.push(`  • ${sanitize(d.nome)} (${d.ch}h)`);
-      if(s==="ementas")       linhasEmentas.push(`  • ${sanitize(d.nome)} (${d.ch}h)`);
+
+  let linhasDisp = [], linhasComp = [], linhasCursar = [], linhasEmentas = [];
+  let total = vmat;
+  curso.modulos.forEach(mod => {
+    mod.disciplinas.forEach(d => {
+      const s = estado[d.id];
+      if (s === "dispensada") linhasDisp.push(`  • ${sanitize(d.nome)} (${d.ch}h)`);
+      if (s === "complementar") linhasComp.push(`  • ${sanitize(d.nome)} (${d.ch}h)`);
+      if (s === "cursar") linhasCursar.push(`  • ${sanitize(d.nome)} (${d.ch}h)`);
+      if (s === "ementas") linhasEmentas.push(`  • ${sanitize(d.nome)} (${d.ch}h)`);
     });
-    const r=calcularFatorModulo(mod);
-    if(!r.dispensadoTotal){
-      const vp=Math.round(mens*r.fator*100)/100;
-      total+=Math.round(vp*mod.numParcelas*100)/100;
+    const r = calcularFatorModulo(mod);
+    if (!r.dispensadoTotal) {
+      const vp = Math.round(mens * r.fator * 100) / 100;
+      total += Math.round(vp * mod.numParcelas * 100) / 100;
     }
   });
 
-  const totalParcelas = Math.ceil(total/mens);
+  const totalParcelas = Math.ceil(total / mens);
 
   const cartaHtml = `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -672,18 +870,18 @@ ul {
 
 <h2>DISCIPLINAS DISPENSADAS</h2>
 <p><em>Equivalência ≥75% da C/H</em></p>
-<ul>${linhasDisp.length>0?linhasDisp.map(d=>`<li>${d}</li>`).join(""):"<li>Nenhuma</li>"}</ul>
+<ul>${linhasDisp.length > 0 ? linhasDisp.map(d => `<li>${d}</li>`).join("") : "<li>Nenhuma</li>"}</ul>
 
 <h2>DISCIPLINAS COM AVALIAÇÃO COMPLEMENTAR</h2>
 <p><em>C/H parcial — cobrança de 1/3 da mensalidade</em></p>
-<ul>${linhasComp.length>0?linhasComp.map(d=>`<li>${d}</li>`).join(""):"<li>Nenhuma</li>"}</ul>
+<ul>${linhasComp.length > 0 ? linhasComp.map(d => `<li>${d}</li>`).join("") : "<li>Nenhuma</li>"}</ul>
 
 <h2>DISCIPLINAS AGUARDANDO EMENTAS</h2>
 <p><em>Dispensa sujeita à análise das ementas</em></p>
-<ul>${linhasEmentas.length>0?linhasEmentas.map(d=>`<li>${d}</li>`).join(""):"<li>Nenhuma</li>"}</ul>
+<ul>${linhasEmentas.length > 0 ? linhasEmentas.map(d => `<li>${d}</li>`).join("") : "<li>Nenhuma</li>"}</ul>
 
 <h2>DISCIPLINAS A CURSAR INTEGRALMENTE</h2>
-<ul>${linhasCursar.length>0?linhasCursar.map(d=>`<li>${d}</li>`).join(""):"<li>Nenhuma</li>"}</ul>
+<ul>${linhasCursar.length > 0 ? linhasCursar.map(d => `<li>${d}</li>`).join("") : "<li>Nenhuma</li>"}</ul>
 
 <h2>CONDIÇÕES FINANCEIRAS</h2>
 <div class="financial-box">
@@ -715,10 +913,13 @@ ul {
 </body>
 </html>`;
 
-  const blob = new Blob([cartaHtml], {type: 'text/html'});
+  const blob = new Blob([cartaHtml], { type: 'text/html' });
   const url = URL.createObjectURL(blob);
   const win = window.open(url, "_blank", "width=700,height=600");
-  win.onload = () => URL.revokeObjectURL(url);
+  win.onload = () => {
+    URL.revokeObjectURL(url);
+    showNotification("✅ Carta gerada com sucesso!", "success");
+  };
 }
 
 // ══════════════════════════════════════════════
