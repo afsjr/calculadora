@@ -523,9 +523,10 @@ function gerarCarta(){
   const curso = CURSOS[cursoAtual];
 
   const hoje = new Date().toLocaleDateString("pt-BR",{day:"2-digit",month:"long",year:"numeric"});
+  const dataHoje = new Date().toLocaleDateString("pt-BR");
+  
   let linhasDisp=[], linhasComp=[], linhasCursar=[], linhasEmentas=[];
   let total=vmat;
-  let parcelasFixas = 1;
   curso.modulos.forEach(mod=>{
     mod.disciplinas.forEach(d=>{
       const s=estado[d.id];
@@ -538,45 +539,10 @@ function gerarCarta(){
     if(!r.dispensadoTotal){
       const vp=Math.round(mens*r.fator*100)/100;
       total+=Math.round(vp*mod.numParcelas*100)/100;
-      parcelasFixas+=mod.numParcelas;
     }
   });
 
   const totalParcelas = Math.ceil(total/mens);
-
-  const carta = `COLÉGIO SANTA MÔNICA TÉCNICO — CSM TEC
-Carta de Análise de Aproveitamento de Estudos
-
-Limoeiro/PE, ${hoje}
-
-Prezado(a) ${nome},
-
-Após análise do histórico acadêmico apresentado pela instituição de origem (${orig}), informamos o resultado da avaliação de aproveitamento de estudos para ingresso no Curso Técnico em Enfermagem do CSM Tec (Matrícula: ${mat}).
-
-DISCIPLINAS DISPENSADAS (equivalência ≥75% da C/H):
-${linhasDisp.length>0?linhasDisp.join("\n"):"  Nenhuma"}
-
-DISCIPLINAS COM AVALIAÇÃO COMPLEMENTAR (C/H parcial — cobrança de 1/3 da mensalidade):
-${linhasComp.length>0?linhasComp.join("\n"):"  Nenhuma"}
-
-DISCIPLINAS AGUARDANDO EMENTAS (dispensa sujeita à análise das ementas):
-${linhasEmentas.length>0?linhasEmentas.join("\n"):"  Nenhuma"}
-
-DISCIPLINAS A CURSAR INTEGRALMENTE:
-${linhasCursar.length>0?linhasCursar.join("\n"):"  Nenhuma"}
-
-CONDIÇÕES FINANCEIRAS:
-  Matrícula: ${fmt(vmat)}
-  Mensalidade padrão: ${fmt(mens)}
-  Total com aproveitamento: ${fmt(total)} em ${totalParcelas} parcelas
-  Duração do curso: ${totalParcelas} meses (integralização com a turma)
-
-O aproveitamento de estudos não altera o prazo de conclusão do curso. O aluno integraliza junto com a turma, com redução proporcional da frequência nas disciplinas dispensadas e complementares.
-
-Esta análise está sujeita à homologação final pela Coordenação Pedagógica do CSM Tec.
-
-Atenciosamente,
-Equipe Comercial — CSM Tec Santa Mônica`;
 
   const cartaHtml = `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -584,13 +550,159 @@ Equipe Comercial — CSM Tec Santa Mônica`;
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Carta de Aproveitamento — ${sanitize(nome)}</title>
-<style>body{font-family:monospace;font-size:13px;padding:40px;white-space:pre-wrap;line-height:1.7;max-width:700px;margin:0 auto;}
-.print-btn{display:block;margin:20px auto;padding:10px 24px;background:#9b1c1c;color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer;}
-@media print{.print-btn{display:none!important;}}</style>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 15mm;
+  max-width: 210mm;
+  margin: 0 auto;
+}
+.header {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 15px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #9b1c1c;
+}
+.logo {
+  width: 70px;
+  height: auto;
+  margin-right: 15px;
+}
+.header-info h1 {
+  font-size: 16px;
+  color: #9b1c1c;
+  margin-bottom: 3px;
+}
+.header-info p {
+  font-size: 10px;
+  color: #666;
+}
+h2 {
+  font-size: 13px;
+  color: #333;
+  margin: 15px 0 8px 0;
+  padding-bottom: 3px;
+  border-bottom: 1px solid #ccc;
+}
+h3 {
+  font-size: 11px;
+  color: #555;
+  margin: 12px 0 5px 0;
+}
+ul {
+  margin-left: 15px;
+  margin-bottom: 8px;
+}
+.financial-box {
+  background: #f5f5f5;
+  padding: 10px;
+  border-radius: 4px;
+  margin: 10px 0;
+  border: 1px solid #ddd;
+}
+.financial-box p {
+  margin: 3px 0;
+}
+.financial-box strong {
+  color: #9b1c1c;
+}
+.signatures {
+  margin-top: 25px;
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+}
+.signature-box {
+  flex: 1;
+  border-top: 1px solid #333;
+  padding-top: 5px;
+  font-size: 10px;
+}
+.signature-box p {
+  margin: 3px 0;
+}
+.signature-box .date {
+  text-align: center;
+  margin-top: 15px;
+}
+.print-btn {
+  display: block;
+  margin: 20px auto;
+  padding: 10px 24px;
+  background: #9b1c1c;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+@media print {
+  body { padding: 10mm; }
+  .print-btn { display: none !important; }
+  @page { size: A4; margin: 10mm; }
+}
+</style>
 </head>
 <body>
 <button class="print-btn" id="printBtn">🖨️ Imprimir / Salvar PDF</button>
-${carta.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
+
+<div class="header">
+  <img src="assets/logo.png" alt="CSM Tec" class="logo">
+  <div class="header-info">
+    <h1>COLÉGIO SANTA MÔNICA TÉCNICO — CSM TEC</h1>
+    <p>Carta de Análise de Aproveitamento de Estudos</p>
+  </div>
+</div>
+
+<p><strong>Limoeiro/PE, ${hoje}</strong></p>
+<p>Prezado(a) <strong>${sanitize(nome)}</strong>,</p>
+
+<p>Após análise do histórico acadêmico apresentado pela instituição de origem (${sanitize(orig)}), informamos o resultado da avaliação de aproveitamento de estudos para ingresso no Curso Técnico em Enfermagem do CSM Tec (Matrícula: ${sanitize(mat)}).</p>
+
+<h2>DISCIPLINAS DISPENSADAS</h2>
+<p><em>Equivalência ≥75% da C/H</em></p>
+<ul>${linhasDisp.length>0?linhasDisp.map(d=>`<li>${d}</li>`).join(""):"<li>Nenhuma</li>"}</ul>
+
+<h2>DISCIPLINAS COM AVALIAÇÃO COMPLEMENTAR</h2>
+<p><em>C/H parcial — cobrança de 1/3 da mensalidade</em></p>
+<ul>${linhasComp.length>0?linhasComp.map(d=>`<li>${d}</li>`).join(""):"<li>Nenhuma</li>"}</ul>
+
+<h2>DISCIPLINAS AGUARDANDO EMENTAS</h2>
+<p><em>Dispensa sujeita à análise das ementas</em></p>
+<ul>${linhasEmentas.length>0?linhasEmentas.map(d=>`<li>${d}</li>`).join(""):"<li>Nenhuma</li>"}</ul>
+
+<h2>DISCIPLINAS A CURSAR INTEGRALMENTE</h2>
+<ul>${linhasCursar.length>0?linhasCursar.map(d=>`<li>${d}</li>`).join(""):"<li>Nenhuma</li>"}</ul>
+
+<h2>CONDIÇÕES FINANCEIRAS</h2>
+<div class="financial-box">
+  <p>Matrícula: <strong>${fmt(vmat)}</strong></p>
+  <p>Mensalidade: <strong>${fmt(mens)}</strong></p>
+  <p>Total a pagar: <strong>${fmt(total)}</strong> em <strong>${totalParcelas} parcelas</strong></p>
+</div>
+
+<p>O aluno cursará as disciplinas aproveitadas junto com as turmas que estão em andamento, seguindo o cronograma regular de aulas.</p>
+
+<p>Esta análise está sujeita à homologação final pela Coordenação Pedagógica do CSM Tec.</p>
+
+<div class="signatures">
+  <div class="signature-box">
+    <p>_________________________________</p>
+    <p><strong>${sanitize(nome)}</strong></p>
+    <p>Estudante - Ciente e Aceito a Proposta</p>
+  </div>
+  <div class="signature-box">
+    <p>_________________________________</p>
+    <p>Coordenação Pedagógica CSM Tec</p>
+    <p>Representante do Colegio</p>
+    <p class="date">Data: ___/___/______</p>
+  </div>
+</div>
+
 <button class="print-btn" id="printBtn2">🖨️ Imprimir / Salvar PDF</button>
 <script>document.getElementById('printBtn').onclick=function(){window.print();};document.getElementById('printBtn2').onclick=function(){window.print();};<\/script>
 </body>
