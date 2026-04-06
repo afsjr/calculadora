@@ -5,6 +5,7 @@ const CURSOS = {
       {
         id:"mod1", tag:"Módulo I", tagClass:"", titulo:"Fundamentos", periodo:"Parcelas 1–10",
         totalCH:410,
+        parcelaInicio:2, parcelaFim:10, numParcelas:9,
         disciplinas:[
           {id:"psicologia",   nome:"Psicologia Aplicada",            ch:60,  def:"cursar"},
           {id:"nutricao",     nome:"Nutrição e Dietética",            ch:60,  def:"complementar"},
@@ -19,6 +20,7 @@ const CURSOS = {
       {
         id:"mod2", tag:"Módulo II", tagClass:"ii", titulo:"Assistência Clínica", periodo:"Parcelas 11–19",
         totalCH:440,
+        parcelaInicio:11, parcelaFim:19, numParcelas:9,
         disciplinas:[
           {id:"introducao",   nome:"Introdução à Enfermagem",                      ch:140, def:"complementar"},
           {id:"medica",       nome:"Enfermagem Médica",                             ch:120, def:"dispensada"},
@@ -30,6 +32,7 @@ const CURSOS = {
       {
         id:"mod3", tag:"Módulo III", tagClass:"iii", titulo:"Especialidades", periodo:"Parcelas 20–28",
         totalCH:350,
+        parcelaInicio:20, parcelaFim:28, numParcelas:9,
         disciplinas:[
           {id:"materno",  nome:"Enf. Materno Infantil",   ch:130, def:"ementas"},
           {id:"pronto",   nome:"Enf. em Pronto Socorro",  ch:60,  def:"ementas"},

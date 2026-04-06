@@ -1,18 +1,90 @@
 // ══════════════════════════════════════════════
 // ESTADO
 // ══════════════════════════════════════════════
+function sanitize(str) {
+  const div = document.createElement('div');
+  div.textContent = str || '';
+  return div.innerHTML;
+}
+
 let cursoAtual = "enfermagem";
 let estado = {};
 let obsState = {};
-let history = [];
+let atendimentoHistory = [];
+let ultimoResultado = null;
 
-// ══════════════════════════════════════════════
-// INIT
-// ══════════════════════════════════════════════
+function loadFromLocalStorage(){
+  try {
+    const saved = localStorage.getItem("csm_calc_history");
+    if(saved) {
+      atendimentoHistory = JSON.parse(saved);
+    }
+  } catch(e) {
+    console.warn("Failed to load history from localStorage", e);
+  }
+}
+
+function saveToLocalStorage(){
+  try {
+    localStorage.setItem("csm_calc_history", JSON.stringify(atendimentoHistory));
+  } catch(e) {
+    console.warn("Failed to save history to localStorage", e);
+  }
+}
+
 function init(){
+  loadFromLocalStorage();
+  
+  document.getElementById("course-selector").addEventListener("click", (e) => {
+    const btn = e.target.closest(".course-btn");
+    if(btn) selecionarCurso(btn.dataset.curso, btn);
+  });
+  
+  document.getElementById("grade-tables").addEventListener("click", (e) => {
+    const btn = e.target.closest(".status-btn");
+    if(btn) setStatus(btn.dataset.id, btn.dataset.status, btn.dataset.mod);
+  });
+
+  document.getElementById("grade-tables").addEventListener("change", (e) => {
+    if(e.target.classList.contains("obs-input")){
+      obsState[e.target.dataset.id] = e.target.value;
+    }
+  });
+
+  document.querySelectorAll(".tab-btn").forEach(btn => {
+    btn.addEventListener("click", () => switchTab(btn.dataset.tab, btn));
+  });
+
+  document.getElementById("calcBtn").addEventListener("click", calcular);
+
+  document.getElementById("results").addEventListener("click", (e) => {
+    const btn = e.target.closest(".action-btn");
+    if(!btn) return;
+    const action = btn.dataset.action;
+    if(action === "imprimir"){
+      imprimirRelatorio();
+    } else if(action === "copiar"){
+      copiarResumo();
+    } else if(action === "carta"){
+      gerarCarta();
+    }
+  });
+
+  document.getElementById("history-container").addEventListener("click", (e) => {
+    const btn = e.target.closest(".hc-btn");
+    if(!btn) return;
+    if(btn.textContent.includes("Recarregar")){
+      const id = parseInt(btn.dataset.id);
+      recarregarAtendimento(id);
+    } else if(btn.textContent.includes("Remover")){
+      const id = parseInt(btn.dataset.id);
+      removerHistorico(id);
+    }
+  });
+
   const cs = document.getElementById("course-selector");
   cs.innerHTML = Object.entries(CURSOS).map(([k,v])=>
-    `<button class="course-btn ${k===cursoAtual?"active":""}" onclick="selecionarCurso('${k}',this)">${v.nome}</button>`
+    `<button class="course-btn ${k===cursoAtual?"active":""}" data-curso="${k}">${v.nome}</button>`
   ).join("");
   resetEstado();
   renderGrade();
@@ -50,8 +122,8 @@ function renderGrade(){
     const chDisp   = mod.disciplinas.filter(d=>estado[d.id]==="dispensada").reduce((s,d)=>s+d.ch,0);
     const header = document.createElement("div");
     header.className = "modulo-header";
-    header.innerHTML = `<span class="modulo-tag ${mod.tagClass}">${mod.tag}</span>
-      <span class="modulo-title">${mod.titulo} — ${mod.periodo}</span>
+    header.innerHTML = `<span class="modulo-tag ${mod.tagClass}">${sanitize(mod.tag)}</span>
+      <span class="modulo-title">${sanitize(mod.titulo)} — ${sanitize(mod.periodo)}</span>
       <span class="modulo-ch" id="ch-${mod.id}">${chAtivas}h em aula · ${chDisp}h dispensadas / ${mod.totalCH}h total</span>`;
     container.appendChild(header);
 
@@ -64,17 +136,17 @@ function renderGrade(){
     mod.disciplinas.forEach(d=>{
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td>${d.nome}</td>
+        <td>${sanitize(d.nome)}</td>
         <td><span class="ch-badge">${d.ch}h</span></td>
         <td>
           <div class="status-group">
             ${["cursar","complementar","dispensada","ementas"].map(s=>`
               <button class="status-btn btn-${s} ${estado[d.id]===s?"active":""}"
-                onclick="setStatus('${d.id}','${s}','${mod.id}')">${STATUS_LABELS[s]}</button>`).join("")}
+                data-id="${d.id}" data-status="${s}" data-mod="${mod.id}" aria-pressed="${estado[d.id]===s}">${STATUS_LABELS[s]}</button>`).join("")}
           </div>
         </td>
         <td><textarea class="obs-input" rows="1" placeholder="Observação (opcional)"
-          onchange="obsState['${d.id}']=this.value">${obsState[d.id]||""}</textarea></td>`;
+          data-id="${d.id}">${obsState[d.id]||""}</textarea></td>`;
       tbody.appendChild(tr);
     });
     table.appendChild(tbody);
@@ -84,7 +156,28 @@ function renderGrade(){
 
 function setStatus(discId, status, modId){
   estado[discId] = status;
-  renderGrade();
+  
+  const container = document.getElementById("grade-tables");
+  const buttons = container.querySelectorAll(`.status-btn[data-id="${discId}"]`);
+  buttons.forEach(btn => {
+    const isActive = btn.dataset.status === status;
+    btn.classList.toggle("active", isActive);
+    btn.setAttribute("aria-pressed", isActive);
+  });
+  
+  atualizarTotaisModulo(modId);
+}
+
+function atualizarTotaisModulo(modId){
+  const curso = CURSOS[cursoAtual];
+  const mod = curso.modulos.find(m => m.id === modId);
+  if(!mod) return;
+  
+  const chAtivas = mod.disciplinas.filter(d=>estado[d.id]!=="dispensada").reduce((s,d)=>s+d.ch,0);
+  const chDisp = mod.disciplinas.filter(d=>estado[d.id]==="dispensada").reduce((s,d)=>s+d.ch,0);
+  
+  const el = document.getElementById(`ch-${modId}`);
+  if(el) el.textContent = `${chAtivas}h em aula · ${chDisp}h dispensadas / ${mod.totalCH}h total`;
 }
 
 // ══════════════════════════════════════════════
@@ -101,7 +194,7 @@ function validar(){
   const banner = document.getElementById("val-banner");
   const list = document.getElementById("val-list");
   if(ementas.length>0){
-    list.innerHTML = ementas.map(n=>`<li>${n} — aguardando ementas: tratada como complementar (1/3) no cálculo</li>`).join("");
+    list.innerHTML = ementas.map(n=>`<li>${sanitize(n)} — aguardando ementas: tratada como complementar (1/3) no cálculo</li>`).join("");
     banner.classList.add("show");
   } else {
     banner.classList.remove("show");
@@ -163,12 +256,12 @@ function calcular(){
   const economia = cursoNormal - totalGeral;
 
   document.getElementById("result-aluno").innerHTML =
-    `<strong>${nome||"Aluno"}</strong>${matricula?" · Mat: "+matricula:""}${origem?" · Origem: "+origem:""} · ${curso.nome} · <em>${new Date().toLocaleDateString("pt-BR")}</em>`;
+    `<strong>${sanitize(nome)||"Aluno"}</strong>${matricula?" · Mat: "+sanitize(matricula):""}${origem?" · Origem: "+sanitize(origem):""} · ${sanitize(curso.nome)} · <em>${new Date().toLocaleDateString("pt-BR")}</em>`;
 
   document.getElementById("modulos-grid").innerHTML = resMods.map(m=>`
     <div class="modulo-card ${["m1","m2","m3"][curso.modulos.indexOf(m.mod)]}">
       <div class="mc-label">${m.mod.tag}</div>
-      <div class="mc-name">${m.mod.titulo}</div>
+      <div class="mc-name">${sanitize(m.mod.titulo)}</div>
       <div class="mc-value">${m.nPCobradas===0?"—":m.nPCobradas}</div>
       <div class="mc-sub">${m.nPCobradas===0?"Módulo dispensado":`parcelas de ${fmt(m.vp)}`}</div>
       <div class="mc-total">${fmt(m.totalMod)}</div>
@@ -198,7 +291,7 @@ function calcular(){
     : "";
 
   document.getElementById("warnings-area").innerHTML = warnings.map(w=>
-    `<div class="warning-box">⚠️ <span>${w}</span></div>`).join("");
+    `<div class="warning-box">⚠️ <span>${sanitize(w)}</span></div>`).join("");
 
   const rows = document.getElementById("breakdown-rows");
   rows.innerHTML = `<div class="pb-row">
@@ -206,8 +299,8 @@ function calcular(){
     <div class="pb-val">${fmt(valMatricula)}</div>
     <div class="pb-tot">${fmt(valMatricula)}</div></div>`;
   resMods.forEach((m,i)=>{
-    const p1=curso.modulos[i].disciplinas.length>0 ? [2,11,20][i] : "–";
-    const p2=[10,19,28][i];
+    const p1=m.mod.disciplinas.length>0 ? m.mod.parcelaInicio : "–";
+    const p2=m.mod.parcelaFim;
     const desc = m.nPCobradas===0
       ? "Módulo totalmente dispensado"
       : `${(m.fator*100).toFixed(1)}% da mensalidade · ${m.r.chC}h integral + ${m.r.chComp}h compl. + ${m.r.chE}h em análise`;
@@ -225,7 +318,14 @@ function calcular(){
 
   document.getElementById("results").style.display="block";
   document.getElementById("results").scrollIntoView({behavior:"smooth",block:"start"});
-
+  
+  ultimoResultado = {
+    nome, matricula, origem,
+    mensalidade, valMatricula,
+    curso: curso.nome,
+    resMods, totalGeral, parcelasGeral, economia, cursoNormal
+  };
+  
   salvarHistorico({nome,matricula,origem,curso:curso.nome,totalGeral,parcelasGeral,economia,valMatricula,mensalidade,estadoSnap:{...estado},obsSnap:{...obsState}});
 }
 
@@ -235,24 +335,25 @@ function calcular(){
 function salvarHistorico(entry){
   entry.ts = new Date().toLocaleString("pt-BR");
   entry.id = Date.now();
-  history.unshift(entry);
+  atendimentoHistory.unshift(entry);
+  saveToLocalStorage();
   renderHistory();
 }
 
 function renderHistory(){
   const c = document.getElementById("history-container");
-  if(history.length===0){
+  if(atendimentoHistory.length===0){
     c.innerHTML='<div class="history-empty">Nenhum atendimento calculado ainda nesta sessão.</div>';
     return;
   }
-  c.innerHTML = `<div class="history-list">${history.map(e=>`
+  c.innerHTML = `<div class="history-list">${atendimentoHistory.map(e=>`
     <div class="history-card" id="hc-${e.id}">
       <div class="hc-header">
         <div>
-          <div class="hc-name">${e.nome||"Aluno sem nome"}</div>
-          <div class="hc-mat">${e.matricula||"Sem matrícula"}${e.origem?" · "+e.origem:""}</div>
+          <div class="hc-name">${sanitize(e.nome)||"Aluno sem nome"}</div>
+          <div class="hc-mat">${sanitize(e.matricula)||"Sem matrícula"}${e.origem?" · "+sanitize(e.origem):""}</div>
         </div>
-        <span class="hc-curso">${e.curso}</span>
+        <span class="hc-curso">${sanitize(e.curso)}</span>
         <span class="hc-date">${e.ts}</span>
       </div>
       <div class="hc-grid">
@@ -262,14 +363,14 @@ function renderHistory(){
         <div class="hc-stat"><div class="hc-stat-val">${fmt(e.mensalidade)}</div><div class="hc-stat-label">Mensalidade</div></div>
       </div>
       <div class="hc-actions">
-        <button class="hc-btn" onclick="recarregarAtendimento(${e.id})">↩ Recarregar</button>
-        <button class="hc-btn danger" onclick="removerHistorico(${e.id})">✕ Remover</button>
+        <button class="hc-btn" data-id="${e.id}">↩ Recarregar</button>
+        <button class="hc-btn danger" data-id="${e.id}">✕ Remover</button>
       </div>
     </div>`).join("")}</div>`;
 }
 
 function recarregarAtendimento(id){
-  const e = history.find(h=>h.id===id);
+  const e = atendimentoHistory.find(h=>h.id===id);
   if(!e) return;
   document.getElementById("nome").value = e.nome||"";
   document.getElementById("matricula").value = e.matricula||"";
@@ -284,7 +385,8 @@ function recarregarAtendimento(id){
 }
 
 function removerHistorico(id){
-  history = history.filter(h=>h.id!==id);
+  atendimentoHistory = atendimentoHistory.filter(h=>h.id!==id);
+  saveToLocalStorage();
   renderHistory();
 }
 
@@ -318,39 +420,93 @@ function imprimirRelatorio(){
 function copiarResumo(){
   const results = document.getElementById("results");
   if(results.style.display==="none"){ alert("Calcule as parcelas primeiro."); return; }
+  
   const nome = document.getElementById("nome").value||"Aluno";
   const mat  = document.getElementById("matricula").value||"";
   const orig = document.getElementById("origem").value||"";
   const mens = parseFloat(document.getElementById("mensalidade").value)||370;
   const vmat = parseFloat(document.getElementById("val_matricula").value)||370;
-  const curso = CURSOS[cursoAtual];
-
-  let total=vmat;
-  let linhas = [
-    "APROVEITAMENTO DE ESTUDOS — CSM TEC",
-    `Aluno: ${nome}${mat?" | Mat: "+mat:""}${orig?" | Origem: "+orig:""}`,
-    `Curso: ${curso.nome}`,
-    `Data: ${new Date().toLocaleDateString("pt-BR")}`,
-    "",
-    `Matrícula (Parcela 1): ${fmt(vmat)}`,
-  ];
-  curso.modulos.forEach((mod,i)=>{
-    const r=calcularFatorModulo(mod);
-    const numP=9;
-    if(r.dispensadoTotal){
-      linhas.push(`${mod.tag} (Parc. ${[2,11,20][i]}–${[10,19,28][i]}): DISPENSADO — R$ 0,00`);
-    } else {
-      const vp=Math.round(mens*r.fator*100)/100;
-      const tot=Math.round(vp*numP*100)/100;
-      total+=tot;
-      linhas.push(`${mod.tag} (Parc. ${[2,11,20][i]}–${[10,19,28][i]}): ${numP}x ${fmt(vp)} = ${fmt(tot)}`);
-    }
-  });
-  const totalParcelas = Math.ceil(total/mens);
+  
+  let total, linhas, totalParcelas;
+  
+  if(ultimoResultado && ultimoResultado.nome === nome && ultimoResultado.mensalidade === mens){
+    total = ultimoResultado.totalGeral;
+    totalParcelas = ultimoResultado.parcelasGeral;
+    linhas = [
+      "APROVEITAMENTO DE ESTUDOS — CSM TEC",
+      `Aluno: ${nome}${mat?" | Mat: "+mat:""}${orig?" | Origem: "+orig:""}`,
+      `Curso: ${ultimoResultado.curso}`,
+      `Data: ${new Date().toLocaleDateString("pt-BR")}`,
+      "",
+      `Matrícula (Parcela 1): ${fmt(vmat)}`,
+    ];
+    
+    ultimoResultado.resMods.forEach(m => {
+      const pStart = m.mod.parcelaInicio;
+      const pEnd = m.mod.parcelaFim;
+      if(m.nPCobradas===0){
+        linhas.push(`${m.mod.tag} (Parc. ${pStart}–${pEnd}): DISPENSADO — R$ 0,00`);
+      } else {
+        linhas.push(`${m.mod.tag} (Parc. ${pStart}–${pEnd}): ${m.nPCobradas}x ${fmt(m.vp)} = ${fmt(m.totalMod)}`);
+      }
+    });
+  } else {
+    const curso = CURSOS[cursoAtual];
+    total = vmat;
+    linhas = [
+      "APROVEITAMENTO DE ESTUDOS — CSM TEC",
+      `Aluno: ${nome}${mat?" | Mat: "+mat:""}${orig?" | Origem: "+orig:""}`,
+      `Curso: ${curso.nome}`,
+      `Data: ${new Date().toLocaleDateString("pt-BR")}`,
+      "",
+      `Matrícula (Parcela 1): ${fmt(vmat)}`,
+    ];
+    curso.modulos.forEach((mod, i)=>{
+      const r=calcularFatorModulo(mod);
+      const numP=mod.numParcelas;
+      const pStart = mod.parcelaInicio;
+      const pEnd = mod.parcelaFim;
+      if(r.dispensadoTotal){
+        linhas.push(`${mod.tag} (Parc. ${pStart}–${pEnd}): DISPENSADO — R$ 0,00`);
+      } else {
+        const vp=Math.round(mens*r.fator*100)/100;
+        const tot=Math.round(vp*numP*100)/100;
+        total+=tot;
+        linhas.push(`${mod.tag} (Parc. ${pStart}–${pEnd}): ${numP}x ${fmt(vp)} = ${fmt(tot)}`);
+      }
+    });
+    totalParcelas = Math.ceil(total/mens);
+  }
+  
   linhas.push("","TOTAL: "+fmt(total)+" em "+totalParcelas+" parcelas");
   linhas.push("Duração: "+totalParcelas+" meses (integralização com a turma)");
-  navigator.clipboard.writeText(linhas.join("\n"))
-    .then(()=>alert("Resumo copiado para a área de transferência!"));
+  const texto = linhas.join("\n");
+  
+  function showSuccess(){
+    alert("Resumo copiado para a área de transferência!");
+  }
+  
+  function fallbackCopy(){
+    const ta = document.createElement("textarea");
+    ta.value = texto;
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    document.body.appendChild(ta);
+    ta.select();
+    const copied = document.execCommand("copy");
+    document.body.removeChild(ta);
+    if(copied){
+      showSuccess();
+    } else {
+      alert("Não foi possível copiar. Por favor, selecione e copie manualmente.");
+    }
+  }
+  
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(texto).then(showSuccess).catch(fallbackCopy);
+  } else {
+    fallbackCopy();
+  }
 }
 
 // ══════════════════════════════════════════════
@@ -373,16 +529,16 @@ function gerarCarta(){
   curso.modulos.forEach(mod=>{
     mod.disciplinas.forEach(d=>{
       const s=estado[d.id];
-      if(s==="dispensada")    linhasDisp.push(`  • ${d.nome} (${d.ch}h)`);
-      if(s==="complementar")  linhasComp.push(`  • ${d.nome} (${d.ch}h)`);
-      if(s==="cursar")        linhasCursar.push(`  • ${d.nome} (${d.ch}h)`);
-      if(s==="ementas")       linhasEmentas.push(`  • ${d.nome} (${d.ch}h)`);
+      if(s==="dispensada")    linhasDisp.push(`  • ${sanitize(d.nome)} (${d.ch}h)`);
+      if(s==="complementar")  linhasComp.push(`  • ${sanitize(d.nome)} (${d.ch}h)`);
+      if(s==="cursar")        linhasCursar.push(`  • ${sanitize(d.nome)} (${d.ch}h)`);
+      if(s==="ementas")       linhasEmentas.push(`  • ${sanitize(d.nome)} (${d.ch}h)`);
     });
     const r=calcularFatorModulo(mod);
     if(!r.dispensadoTotal){
       const vp=Math.round(mens*r.fator*100)/100;
-      total+=Math.round(vp*9*100)/100;
-      parcelasFixas+=9;
+      total+=Math.round(vp*mod.numParcelas*100)/100;
+      parcelasFixas+=mod.numParcelas;
     }
   });
 
@@ -422,17 +578,29 @@ Esta análise está sujeita à homologação final pela Coordenação Pedagógic
 Atenciosamente,
 Equipe Comercial — CSM Tec Santa Mônica`;
 
-  const win = window.open("","_blank","width=700,height=600");
-  win.document.write(`<html><head><title>Carta de Aproveitamento — ${nome}</title>
-  <style>body{font-family:monospace;font-size:13px;padding:40px;white-space:pre-wrap;line-height:1.7;max-width:700px;margin:0 auto;}
-  .print-btn{display:block;margin:20px auto;padding:10px 24px;background:#9b1c1c;color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer;}
-  @media print{.print-btn{display:none!important;}}
-  </style></head><body>
-  <button class="print-btn" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
-  ${carta.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
-  <button class="print-btn" onclick="window.print()">🖨️ Imprimir / Salvar PDF</button>
-  </body></html>`);
-  win.document.close();
+  const cartaHtml = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Carta de Aproveitamento — ${sanitize(nome)}</title>
+<style>body{font-family:monospace;font-size:13px;padding:40px;white-space:pre-wrap;line-height:1.7;max-width:700px;margin:0 auto;}
+.print-btn{display:block;margin:20px auto;padding:10px 24px;background:#9b1c1c;color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer;}
+@media print{.print-btn{display:none!important;}}</style>
+</head>
+<body>
+<button class="print-btn" id="printBtn">🖨️ Imprimir / Salvar PDF</button>
+${carta.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
+<button class="print-btn" id="printBtn2">🖨️ Imprimir / Salvar PDF</button>
+<script>document.getElementById('printBtn').onclick=function(){window.print();};document.getElementById('printBtn2').onclick=function(){window.print();};<\/script>
+</body>
+</html>`;
+
+  const blob = new Blob([cartaHtml], {type: 'text/html'});
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, "_blank", "width=700,height=600");
+  win.onload = () => URL.revokeObjectURL(url);
+}
 }
 
 // ══════════════════════════════════════════════

@@ -3,6 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self';">
+  <meta name="description" content="Calculadora interna de aproveitamento de estudos para a equipe comercial do CSM Tec.">
+  <meta name="robots" content="noindex, nofollow">
   <title>CSM Tec — Calculadora de Aproveitamento</title>
   <link rel="stylesheet" href="css/styles.css">
 </head>
@@ -20,8 +23,8 @@
 
 <!-- TABS -->
 <div class="tabs-bar">
-  <button class="tab-btn active" onclick="switchTab('calc',this)">🧮 Novo cálculo</button>
-  <button class="tab-btn" onclick="switchTab('history',this)">📋 Histórico de atendimentos</button>
+  <button class="tab-btn active" data-tab="calc">🧮 Novo cálculo</button>
+  <button class="tab-btn" data-tab="history">📋 Histórico de atendimentos</button>
 </div>
 
 <main>
@@ -34,23 +37,23 @@
     <h2>👤 Dados do Aluno</h2>
     <div class="form-row">
       <div class="form-group">
-        <label>Nome completo</label>
+        <label for="nome">Nome completo</label>
         <input type="text" id="nome" placeholder="Ex: Larissa de Morais Félix">
       </div>
       <div class="form-group">
-        <label>Matrícula</label>
+        <label for="matricula">Matrícula</label>
         <input type="text" id="matricula" placeholder="Ex: ENF240253">
       </div>
       <div class="form-group">
-        <label>Instituição de origem</label>
+        <label for="origem">Instituição de origem</label>
         <input type="text" id="origem" placeholder="Ex: Grau Técnico">
       </div>
       <div class="form-group">
-        <label>Valor da matrícula (R$)</label>
+        <label for="val_matricula">Valor da matrícula (R$)</label>
         <input type="number" id="val_matricula" value="370" step="0.01" min="0">
       </div>
       <div class="form-group">
-        <label>Mensalidade (R$)</label>
+        <label for="mensalidade">Mensalidade (R$)</label>
         <input type="number" id="mensalidade" value="370" step="0.01" min="0">
       </div>
     </div>
@@ -81,7 +84,7 @@
       <div class="legend-item"><div class="legend-dot ld-ementas"></div>Aguardando ementas</div>
     </div>
     <div id="grade-tables"></div>
-    <button class="calc-btn" onclick="calcular()">⚡ Calcular Parcelas</button>
+    <button class="calc-btn" id="calcBtn">⚡ Calcular Parcelas</button>
   </div>
 
   <!-- Resultado -->
@@ -97,9 +100,9 @@
       <div id="breakdown-rows"></div>
     </div>
     <div class="action-row">
-      <button class="action-btn" onclick="imprimirRelatorio()">🖨️ Imprimir / Salvar PDF</button>
-      <button class="action-btn secondary" onclick="copiarResumo()">📋 Copiar resumo</button>
-      <button class="action-btn ghost" onclick="gerarCarta()">📄 Gerar carta de aproveitamento</button>
+      <button class="action-btn" data-action="imprimir">🖨️ Imprimir / Salvar PDF</button>
+      <button class="action-btn secondary" data-action="copiar">📋 Copiar resumo</button>
+      <button class="action-btn ghost" data-action="carta">📄 Gerar carta de aproveitamento</button>
     </div>
   </div>
 
