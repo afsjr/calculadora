@@ -568,8 +568,15 @@ body {
   border-bottom: 2px solid #9b1c1c;
 }
 .logo {
-  width: 70px;
-  height: auto;
+  font-size: 28px;
+  font-weight: bold;
+  color: #9b1c1c;
+  margin-right: 15px;
+}
+.logo-text {
+  font-size: 28px;
+  font-weight: bold;
+  color: #9b1c1c;
   margin-right: 15px;
 }
 .header-info h1 {
@@ -651,7 +658,7 @@ ul {
 <button class="print-btn" id="printBtn">🖨️ Imprimir / Salvar PDF</button>
 
 <div class="header">
-  <img src="assets/logo.png" alt="CSM Tec" class="logo">
+  <div class="logo-text">🎓 CSM TEC</div>
   <div class="header-info">
     <h1>COLÉGIO SANTA MÔNICA TÉCNICO — CSM TEC</h1>
     <p>Carta de Análise de Aproveitamento de Estudos</p>
