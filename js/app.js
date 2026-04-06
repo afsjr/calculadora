@@ -601,7 +601,6 @@ ${carta.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
   const win = window.open(url, "_blank", "width=700,height=600");
   win.onload = () => URL.revokeObjectURL(url);
 }
-}
 
 // ══════════════════════════════════════════════
 // START
